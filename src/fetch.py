@@ -128,14 +128,26 @@ def _expand_comments(page, rounds: int = 8) -> None:
             break
 
 
-def make_scroller(max_scrolls: int, pause_ms: int, with_comments: bool = False):
+def make_scroller(max_scrolls: int, pause_ms: int, with_comments: bool = False,
+                  stop_when_stable: bool = False):
     """page_action that scrolls, expands truncated posts, and (optionally)
-    expands comment threads."""
+    expands comment threads. If stop_when_stable, stop early once the post count
+    stops growing (used for full-history indexing)."""
 
     def _action(page):
+        last, stable = 0, 0
         for _ in range(max_scrolls):
             page.keyboard.press("End")
             page.wait_for_timeout(pause_ms)
+            if stop_when_stable:
+                try:
+                    cnt = page.locator('div[role="article"]').count()
+                except Exception:  # noqa: BLE001
+                    cnt = last
+                stable = stable + 1 if cnt <= last else 0
+                last = max(last, cnt)
+                if stable >= 3:        # no growth for 3 scrolls -> reached the end
+                    break
         if with_comments:
             _select_all_comments(page)  # switch sort to "All comments" first
             _expand_comments(page)
@@ -148,7 +160,8 @@ def make_scroller(max_scrolls: int, pause_ms: int, with_comments: bool = False):
 
 def fetch_page(url: str, *, headless: bool = False, max_scrolls: int = 0,
                pause_ms: int = 2500, with_comments: bool = False,
-               retries: int = 2, capture_xhr: str | None = None):
+               retries: int = 2, capture_xhr: str | None = None,
+               stop_when_stable: bool = False):
     """Fetch `url` with the stealth browser, optionally scrolling first.
 
     Retries on transient navigation timeouts (FB can be slow). Returns the
@@ -157,7 +170,8 @@ def fetch_page(url: str, *, headless: bool = False, max_scrolls: int = 0,
     responses are captured on page.captured_xhr — used to recover post IDs.
     """
     if max_scrolls > 0 or with_comments:
-        page_action = make_scroller(max(max_scrolls, 1), pause_ms, with_comments)
+        page_action = make_scroller(max(max_scrolls, 1), pause_ms, with_comments,
+                                    stop_when_stable)
     else:
         page_action = None
 

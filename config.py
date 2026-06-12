@@ -25,6 +25,14 @@ WITH_COMMENTS = True
 FIGURE_NAME = "د.مجدى الطيارى"
 COMMENT_SCROLLS = 4       # scrolls on the post page to load more comments
 
+# ---- Full-history archive (index + resumable fetch) -----------------------
+INDEX_SCROLLS = 60        # max feed scrolls when indexing (stops early if stable)
+BATCH_SIZE = 20           # posts per batch in the resumable fetch
+# Only fetch posts on/after this date (YYYY-MM-DD). Set after reviewing the index
+# to skip his older non-stock posts. None = fetch everything indexed.
+SINCE_DATE = None
+# DB_PATH is defined below, after the paths section (needs OUTPUT_DIR).
+
 # Optional date cutoff: stop collecting posts older than this (YYYY-MM-DD).
 # Set to None to ignore date filtering for now.
 STOP_DATE = None
@@ -49,3 +57,5 @@ DEBUG_DIR = ROOT  # raw HTML dumps land here during development
 
 for _d in (OUTPUT_DIR, POSTS_DIR, IMAGES_DIR):
     _d.mkdir(parents=True, exist_ok=True)
+
+DB_PATH = OUTPUT_DIR / "state.db"   # SQLite progress/state store

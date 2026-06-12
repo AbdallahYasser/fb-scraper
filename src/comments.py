@@ -53,6 +53,54 @@ def collect_dialog(post_url: str, figure_name: str, page_url: str = "", *,
     return parse.parse_comments(page, figure_name)
 
 
+def fetch_post_and_comments(permalink: str, figure_name: str, *,
+                            headless: bool = True, scrolls: int = 4,
+                            pause_ms: int = 2000, delay: tuple | None = None):
+    """Open a post's permalink ONCE and return (post_dict, comment_turns).
+
+    Used by the resumable archive fetcher — the permalink page carries both the
+    full post content and its comment thread.
+    """
+    if delay:
+        time.sleep(random.uniform(*delay))
+    try:
+        page = fetch.fetch_page(permalink, headless=headless, max_scrolls=scrolls,
+                                pause_ms=pause_ms, with_comments=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"  ! fetch failed {permalink[:55]}: {e}")
+        return None, []
+    tops = parse.find_posts(page)
+    post = parse.parse_post(tops[0]) if tops else {}
+    turns = parse.parse_comments(page, figure_name)
+    return post, turns
+
+
+def fetch_archive_batch(jobs: list[tuple], figure_name: str, *,
+                        headless: bool = True, scrolls: int = 4,
+                        pause_ms: int = 2000, concurrency: int = 3,
+                        delay: tuple | None = None) -> dict:
+    """Fetch a batch of posts (post + comments) concurrently.
+
+    `jobs` = list of (post_id, permalink). Returns {post_id: (post, turns)}.
+    """
+    results: dict = {}
+
+    def _work(pid, permalink):
+        return pid, fetch_post_and_comments(
+            permalink, figure_name, headless=headless, scrolls=scrolls,
+            pause_ms=pause_ms, delay=delay)
+
+    with cf.ThreadPoolExecutor(max_workers=concurrency) as ex:
+        futures = [ex.submit(_work, pid, url) for pid, url in jobs if url]
+        for fut in cf.as_completed(futures):
+            try:
+                pid, payload = fut.result()
+                results[pid] = payload
+            except Exception as e:  # noqa: BLE001
+                print(f"  ! archive job failed: {e}")
+    return results
+
+
 def collect_dialogs_parallel(jobs: list[tuple], figure_name: str, page_url: str,
                              *, headless: bool = True, scrolls: int = 3,
                              pause_ms: int = 2000, concurrency: int = 3,
