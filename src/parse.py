@@ -349,7 +349,7 @@ def parse_comments(page: Any, figure_name: str) -> list[dict]:
     Turns are re-threaded so each comment is followed by its own replies.
     """
     turns: list[dict] = []
-    seen: set[tuple[str, str]] = set()  # (author, text) -> drop double-renders
+    seen: dict = {}  # key -> kept turn (to drop double-renders, merge images)
     for art in page.css('div[role="article"]'):
         label = art.attrib.get("aria-label", "")
         if not label.startswith(("Comment by", "Reply by")):
@@ -363,20 +363,26 @@ def parse_comments(page: Any, figure_name: str) -> list[dict]:
         if target and text.startswith(target):
             text = text[len(target):].strip()
         # FB re-renders the comment list when the sort changes (Most relevant +
-        # All comments both stay in the DOM), so skip exact author+text repeats.
-        key = (name.strip(), text.strip(), tuple(images))
+        # All comments both stay in the DOM). Dedup on (author, text); for
+        # image-only comments key on the image instead.
+        key = ((name.strip(), text.strip()) if text.strip()
+               else (name.strip(), tuple(images)))
         if key in seen:
+            kept = seen[key]
+            if images and not kept["image_urls"]:
+                kept["image_urls"] = images  # one render had the image, merge it
             continue
-        seen.add(key)
         # FB tags the original poster's comments with a standalone "Author" badge
         badge = "Author" in [str(x).strip() for x in art.css("::text")]
         is_figure = badge or name.strip() == figure_name.strip()
-        turns.append({
+        turn = {
             "name": name,
             "is_reply": is_reply,
             "reply_to": target,
             "is_figure": is_figure,
             "text": text,
             "image_urls": images,
-        })
+        }
+        seen[key] = turn
+        turns.append(turn)
     return _thread_order(turns)
