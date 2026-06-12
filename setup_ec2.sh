@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# One-shot setup for fb-scraper on a fresh Ubuntu EC2 box (tested on 24.04/26.04).
+# One-shot setup for fb-scraper on a fresh Ubuntu EC2 box.
+# IMPORTANT: use Ubuntu 24.04 LTS (x86_64). The stealth browser engine
+# (patchright) has NO chromium build for Ubuntu 26.04 yet.
 #   ssh in, clone the repo, then:  bash setup_ec2.sh
 set -euo pipefail
 
@@ -31,8 +33,8 @@ uv python install 3.12
 
 echo ">> [4/5] Virtualenv + Python deps + stealth browser ..."
 uv venv --python 3.12 .venv
-.venv/bin/python -m pip install --quiet --upgrade pip
-.venv/bin/pip install -r requirements.txt
+# uv venvs ship without pip; install deps with uv's resolver into the venv.
+VIRTUAL_ENV=.venv uv pip install -r requirements.txt
 .venv/bin/scrapling install
 
 echo ">> [5/5] Smoke test (should print: Example Domain) ..."
