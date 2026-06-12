@@ -71,6 +71,7 @@ def fetch_post_and_comments(permalink: str, figure_name: str, *,
         return None, []
     tops = parse.find_posts(page)
     post = parse.parse_post(tops[0]) if tops else {}
+    post["datetime"] = parse.extract_post_time(page)  # exact date+time
     turns = parse.parse_comments(page, figure_name)
     return post, turns
 

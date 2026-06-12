@@ -7,8 +7,16 @@ from pathlib import Path
 
 
 def _format_date(post: dict) -> str:
-    """Prefer a full calendar date (from normalized date_iso); fall back to the
-    raw FB label. e.g. 'Thursday, 11 June 2026' instead of '1d'."""
+    """Best available date label. Prefers the exact datetime (from the permalink
+    page), then the normalized calendar date, then the raw FB label.
+    e.g. 'Thursday, 11 June 2026 at 14:56'."""
+    dtv = post.get("datetime")
+    if dtv:
+        try:
+            d = _dt.datetime.fromisoformat(dtv)
+            return d.strftime("%A, %d %B %Y at %H:%M")
+        except ValueError:
+            pass
     iso = post.get("date_iso")
     if iso:
         try:

@@ -318,6 +318,25 @@ def _thread_order(turns: list[dict]) -> list[dict]:
     return ordered
 
 
+def extract_post_time(page: Any) -> str | None:
+    """Exact post datetime 'YYYY-MM-DD HH:MM' from a permalink page.
+
+    FB embeds the post's unix creation/publish time server-side in the HTML
+    (comment times use the separate "created_time" key, which we ignore here).
+    """
+    import datetime as _dt
+    html = getattr(page, "html_content", "") or ""
+    for key in ("publish_time", "creation_time"):
+        m = re.search(r'"%s":(\d{9,11})' % key, html)
+        if m:
+            try:
+                return _dt.datetime.fromtimestamp(
+                    int(m.group(1))).strftime("%Y-%m-%d %H:%M")
+            except (ValueError, OSError):
+                pass
+    return None
+
+
 def _extract_comment_images(article: Any) -> list[str]:
     """Collect image attachments posted INSIDE a comment (charts/screenshots),
     excluding small profile avatars and nested-reply images.
