@@ -1,8 +1,24 @@
 """Render a post dict into a readable Markdown study note with inline images."""
 from __future__ import annotations
 
+import datetime as _dt
 import re
 from pathlib import Path
+
+
+def _format_date(post: dict) -> str:
+    """Prefer a full calendar date (from normalized date_iso); fall back to the
+    raw FB label. e.g. 'Thursday, 11 June 2026' instead of '1d'."""
+    iso = post.get("date_iso")
+    if iso:
+        try:
+            d = _dt.date.fromisoformat(iso)
+            label = d.strftime("%A, %d %B %Y")
+            raw = post.get("date")
+            return f"{label} ({raw})" if raw else label
+        except ValueError:
+            pass
+    return post.get("date") or "Unknown date"
 
 
 def _slug(post: dict, fallback: str) -> str:
@@ -51,8 +67,7 @@ def to_markdown(post: dict, image_paths: list[Path], posts_dir: Path,
     slug = _slug(post, fallback=f"post_{index:04d}")
 
     lines: list[str] = []
-    date = post.get("date") or "Unknown date"
-    lines.append(f"# Post — {date}\n")
+    lines.append(f"# Post — {_format_date(post)}\n")
     if post.get("post_url"):
         lines.append(f"[Original post]({post['post_url']})\n")
     lines.append("")

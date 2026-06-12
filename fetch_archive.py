@@ -52,6 +52,7 @@ def main() -> None:
                 post["text"] = r["preview"] or ""
             if not post.get("date"):
                 post["date"] = r["date_str"]
+            post["date_iso"] = r["date_iso"]   # full calendar date for the note
 
             imgs = media.download_images(post.get("image_urls", []),
                                          config.IMAGES_DIR)

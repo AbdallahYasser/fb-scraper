@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import config                         # noqa: E402
-from src import fetch, parse, media, render, comments  # noqa: E402
+from src import fetch, parse, media, render, comments, dates  # noqa: E402
 
 
 def main() -> None:
@@ -38,6 +38,7 @@ def main() -> None:
     seen_urls: set[str] = set()
     for i, article in enumerate(articles):
         post = parse.parse_post(article)
+        post["date_iso"] = dates.to_iso(post.get("date"))
 
         # If the post has no permalink (text-only posts), recover its ID from the
         # GraphQL index and build the canonical story permalink.
