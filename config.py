@@ -26,11 +26,11 @@ FIGURE_NAME = "د.مجدى الطيارى"
 COMMENT_SCROLLS = 4       # scrolls on the post page to load more comments
 
 # ---- Full-history archive (index + resumable fetch) -----------------------
-INDEX_SCROLLS = 20        # max feed scrolls when indexing (stops early if stable)
+INDEX_SCROLLS = 400       # max feed scrolls when indexing (stops early if stable)
 BATCH_SIZE = 20           # posts per batch in the resumable fetch
 # Only fetch posts on/after this date (YYYY-MM-DD). Set after reviewing the index
 # to skip his older non-stock posts. None = fetch everything indexed.
-SINCE_DATE = "2026-06-10"   # test run: last 3 days
+SINCE_DATE = None         # set after reviewing the index
 # DB_PATH is defined below, after the paths section (needs OUTPUT_DIR).
 
 # Optional date cutoff: stop collecting posts older than this (YYYY-MM-DD).
@@ -43,10 +43,10 @@ HEADLESS = True           # True = invisible browser (faster, less CPU/RAM/heat)
 # ---- Parallelism / pacing -------------------------------------------------
 # How many post comment-pages to fetch at the same time. 2-3 is a good balance
 # of speed vs. Facebook soft-block risk; higher = faster but riskier.
-COMMENT_CONCURRENCY = 3
+COMMENT_CONCURRENCY = 2   # gentler on EC2 (AWS IPs get soft-blocked faster)
 # Random delay (seconds) before each comment fetch, to avoid bursty traffic
 # that trips Facebook's rate limits. (min, max)
-FETCH_DELAY = (3.0, 7.0)
+FETCH_DELAY = (6.0, 12.0)
 
 # ---- Paths ----------------------------------------------------------------
 ROOT = Path(__file__).parent
