@@ -76,6 +76,12 @@ def main() -> None:
             pause_ms=config.SCROLL_PAUSE_MS,
             concurrency=config.COMMENT_CONCURRENCY, delay=config.FETCH_DELAY)
 
+    # 4b) Download any images posted inside comments.
+    for dialog in dialogs.values():
+        for turn in dialog:
+            turn["image_paths"] = media.download_images(
+                turn.get("image_urls", []), config.IMAGES_DIR)
+
     # 5) Render one Markdown note per post.
     written = 0
     for i, post in selected:

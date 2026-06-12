@@ -318,6 +318,29 @@ def _thread_order(turns: list[dict]) -> list[dict]:
     return ordered
 
 
+def _extract_comment_images(article: Any) -> list[str]:
+    """Collect image attachments posted INSIDE a comment (charts/screenshots),
+    excluding small profile avatars and nested-reply images.
+
+    Content attachments live on FB's photo-upload CDN path (t39.30808) and/or
+    carry an auto-caption alt ("May be an image of ..."); avatars don't.
+    """
+    out: list[str] = []
+    for im in article.css("img"):
+        anc = im.find_ancestor(
+            lambda e: e.tag == "div" and e.attrib.get("role") == "article"
+        )
+        if anc is not None and anc._root is not article._root:
+            continue  # belongs to a nested reply, not this comment
+        src = str(im.attrib.get("src", ""))
+        alt = str(im.attrib.get("alt", ""))
+        if not src.startswith("http") or "scontent" not in src:
+            continue
+        if "t39.30808" in src or alt.startswith("May be"):
+            out.append(src)
+    return list(dict.fromkeys(out))
+
+
 def parse_comments(page: Any, figure_name: str) -> list[dict]:
     """Return ordered dialog turns from a post's permalink/photo page.
 
@@ -333,14 +356,15 @@ def parse_comments(page: Any, figure_name: str) -> list[dict]:
             continue
         name, is_reply, target = _parse_comment_label(label)
         text = _comment_own_text(art)
-        if not text:
-            continue
+        images = _extract_comment_images(art)
+        if not text and not images:
+            continue  # keep image-only comments
         # drop a leading @mention of the person being replied to (cleaner)
         if target and text.startswith(target):
             text = text[len(target):].strip()
         # FB re-renders the comment list when the sort changes (Most relevant +
         # All comments both stay in the DOM), so skip exact author+text repeats.
-        key = (name.strip(), text.strip())
+        key = (name.strip(), text.strip(), tuple(images))
         if key in seen:
             continue
         seen.add(key)
@@ -353,5 +377,6 @@ def parse_comments(page: Any, figure_name: str) -> list[dict]:
             "reply_to": target,
             "is_figure": is_figure,
             "text": text,
+            "image_urls": images,
         })
     return _thread_order(turns)

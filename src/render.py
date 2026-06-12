@@ -13,12 +13,15 @@ def _slug(post: dict, fallback: str) -> str:
     return fallback
 
 
-def _render_dialog(turns: list[dict], figure_name: str) -> list[str]:
-    """Render comment turns as a readable Follower/Author dialog."""
+def _render_dialog(turns: list[dict], figure_name: str,
+                   images_dir: Path) -> list[str]:
+    """Render comment turns as a readable Follower/Author dialog, with any
+    images posted inside comments embedded inline."""
     lines = ["", "---", "", "## 💬 Discussion", ""]
     for t in turns:
         text = (t.get("text") or "").strip()
-        if not text:
+        img_paths = t.get("image_paths") or []
+        if not text and not img_paths:
             continue
         if t.get("is_figure"):
             speaker = f"🎓 **{figure_name}**"
@@ -26,7 +29,10 @@ def _render_dialog(turns: list[dict], figure_name: str) -> list[str]:
             speaker = f"👤 **{t.get('name', 'Follower')}**"
         # indent replies one level so threads read like a conversation
         prefix = "> > " if t.get("is_reply") else "> "
-        lines.append(f"{prefix}{speaker}: {text}")
+        lines.append(f"{prefix}{speaker}: {text}".rstrip())
+        for img in img_paths:
+            rel = Path("..") / images_dir.name / img.name
+            lines.append(f"{prefix}![comment image]({rel.as_posix()})")
         lines.append(">")
     lines.append("")
     return lines
@@ -59,7 +65,7 @@ def to_markdown(post: dict, image_paths: list[Path], posts_dir: Path,
     lines.append("")
 
     if comments:
-        lines.extend(_render_dialog(comments, figure_name))
+        lines.extend(_render_dialog(comments, figure_name, images_dir))
 
     dest = posts_dir / f"{slug}.md"
     dest.write_text("\n".join(lines), encoding="utf-8")
