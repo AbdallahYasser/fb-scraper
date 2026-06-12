@@ -1,0 +1,66 @@
+"""Render a post dict into a readable Markdown study note with inline images."""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+
+def _slug(post: dict, fallback: str) -> str:
+    url = post.get("post_url") or ""
+    m = re.search(r"(\d{6,})", url)
+    if m:
+        return m.group(1)
+    return fallback
+
+
+def _render_dialog(turns: list[dict], figure_name: str) -> list[str]:
+    """Render comment turns as a readable Follower/Author dialog."""
+    lines = ["", "---", "", "## 💬 Discussion", ""]
+    for t in turns:
+        text = (t.get("text") or "").strip()
+        if not text:
+            continue
+        if t.get("is_figure"):
+            speaker = f"🎓 **{figure_name}**"
+        else:
+            speaker = f"👤 **{t.get('name', 'Follower')}**"
+        # indent replies one level so threads read like a conversation
+        prefix = "> > " if t.get("is_reply") else "> "
+        lines.append(f"{prefix}{speaker}: {text}")
+        lines.append(">")
+    lines.append("")
+    return lines
+
+
+def to_markdown(post: dict, image_paths: list[Path], posts_dir: Path,
+                images_dir: Path, index: int = 0,
+                comments: list[dict] | None = None,
+                figure_name: str = "") -> Path:
+    """Write one .md file for a post and return its path.
+
+    Image links are written relative to posts_dir so previewers render them inline.
+    If `comments` (dialog turns) are given, they're appended as a Discussion.
+    """
+    posts_dir.mkdir(parents=True, exist_ok=True)
+    slug = _slug(post, fallback=f"post_{index:04d}")
+
+    lines: list[str] = []
+    date = post.get("date") or "Unknown date"
+    lines.append(f"# Post — {date}\n")
+    if post.get("post_url"):
+        lines.append(f"[Original post]({post['post_url']})\n")
+    lines.append("")
+    lines.append(post.get("text", "").strip() or "_(no text)_")
+    lines.append("")
+
+    for img in image_paths:
+        rel = Path("..") / images_dir.name / img.name
+        lines.append(f"![image]({rel.as_posix()})")
+    lines.append("")
+
+    if comments:
+        lines.extend(_render_dialog(comments, figure_name))
+
+    dest = posts_dir / f"{slug}.md"
+    dest.write_text("\n".join(lines), encoding="utf-8")
+    return dest
