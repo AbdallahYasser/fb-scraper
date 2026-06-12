@@ -30,7 +30,15 @@ COMMENT_SCROLLS = 4       # scrolls on the post page to load more comments
 STOP_DATE = None
 
 # ---- Browser --------------------------------------------------------------
-HEADLESS = False          # watch the browser work while we're building/testing
+HEADLESS = True           # True = invisible browser (faster, less CPU/RAM/heat)
+
+# ---- Parallelism / pacing -------------------------------------------------
+# How many post comment-pages to fetch at the same time. 2-3 is a good balance
+# of speed vs. Facebook soft-block risk; higher = faster but riskier.
+COMMENT_CONCURRENCY = 3
+# Random delay (seconds) before each comment fetch, to avoid bursty traffic
+# that trips Facebook's rate limits. (min, max)
+FETCH_DELAY = (3.0, 7.0)
 
 # ---- Paths ----------------------------------------------------------------
 ROOT = Path(__file__).parent

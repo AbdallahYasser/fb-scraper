@@ -6,7 +6,10 @@ replies", then parse the nested comment articles into ordered dialog turns.
 """
 from __future__ import annotations
 
+import concurrent.futures as cf
+import random
 import re
+import time
 
 from . import fetch, parse
 
@@ -29,14 +32,17 @@ def _story_permalink(post_url: str, page_url: str) -> str:
 
 def collect_dialog(post_url: str, figure_name: str, page_url: str = "", *,
                    headless: bool = False, scrolls: int = 3,
-                   pause_ms: int = 2000) -> list[dict]:
+                   pause_ms: int = 2000, delay: tuple | None = None) -> list[dict]:
     """Fetch a post's full comment thread and return dialog turns.
 
     Returns a list of {name, is_reply, reply_to, is_figure, text}. Empty list if
-    the page can't be loaded or has no comments.
+    the page can't be loaded or has no comments. `delay` = (min, max) seconds to
+    sleep first, to avoid bursty traffic when many run in parallel.
     """
     if not post_url:
         return []
+    if delay:
+        time.sleep(random.uniform(*delay))
     url = _story_permalink(post_url, page_url)
     try:
         page = fetch.fetch_page(url, headless=headless, max_scrolls=scrolls,
@@ -45,3 +51,31 @@ def collect_dialog(post_url: str, figure_name: str, page_url: str = "", *,
         print(f"  ! could not load comments for {url[:60]}: {e}")
         return []
     return parse.parse_comments(page, figure_name)
+
+
+def collect_dialogs_parallel(jobs: list[tuple], figure_name: str, page_url: str,
+                             *, headless: bool = True, scrolls: int = 3,
+                             pause_ms: int = 2000, concurrency: int = 3,
+                             delay: tuple | None = None) -> dict:
+    """Fetch many posts' comment threads concurrently.
+
+    `jobs` is a list of (key, post_url). Each runs collect_dialog in its own
+    browser via a thread pool (reuses all the sync fetch/expand logic). Returns
+    {key: dialog_turns}. A staggered random `delay` spreads out the requests.
+    """
+    results: dict = {}
+
+    def _work(key, post_url):
+        return key, collect_dialog(
+            post_url, figure_name, page_url, headless=headless,
+            scrolls=scrolls, pause_ms=pause_ms, delay=delay)
+
+    with cf.ThreadPoolExecutor(max_workers=concurrency) as ex:
+        futures = [ex.submit(_work, key, url) for key, url in jobs if url]
+        for fut in cf.as_completed(futures):
+            try:
+                key, dialog = fut.result()
+                results[key] = dialog
+            except Exception as e:  # noqa: BLE001
+                print(f"  ! comment job failed: {e}")
+    return results

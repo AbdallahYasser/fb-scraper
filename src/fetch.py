@@ -7,8 +7,26 @@ Playwright page to, so we can scroll/click before the HTML is captured.
 from __future__ import annotations
 
 import re
+import time
 
 from scrapling.fetchers import StealthyFetcher
+
+# Signs Facebook served an error / soft-block page instead of real content.
+_BLOCKED_MARKERS = ("something went wrong", "temporarily blocked",
+                    "try again later", "couldn't load")
+
+
+def _looks_blocked(page) -> bool:
+    """True if the response is an FB error/soft-block page, not real content."""
+    status = getattr(page, "status", 200) or 200
+    html = page.html_content or ""
+    if status >= 500:
+        return True
+    if len(html) < 5000:  # real FB pages are hundreds of KB
+        low = html.lower()
+        if any(m in low for m in _BLOCKED_MARKERS) or len(html) < 2000:
+            return True
+    return False
 
 
 # "See more" button label across the locales FB may serve.
@@ -130,29 +148,45 @@ def make_scroller(max_scrolls: int, pause_ms: int, with_comments: bool = False):
 
 def fetch_page(url: str, *, headless: bool = False, max_scrolls: int = 0,
                pause_ms: int = 2500, with_comments: bool = False,
-               retries: int = 2):
+               retries: int = 2, capture_xhr: str | None = None):
     """Fetch `url` with the stealth browser, optionally scrolling first.
 
     Retries on transient navigation timeouts (FB can be slow). Returns the
-    Scrapling page/Adaptor object (use .html_content, .css(), etc).
+    Scrapling page/Adaptor object (use .html_content, .css(), etc). If
+    `capture_xhr` (a URL substring like "graphql") is given, matching XHR/GraphQL
+    responses are captured on page.captured_xhr — used to recover post IDs.
     """
     if max_scrolls > 0 or with_comments:
         page_action = make_scroller(max(max_scrolls, 1), pause_ms, with_comments)
     else:
         page_action = None
 
+    extra = {"capture_xhr": capture_xhr} if capture_xhr else {}
     last_err = None
     for attempt in range(1, retries + 2):
         try:
-            return StealthyFetcher.fetch(
+            page = StealthyFetcher.fetch(
                 url,
                 headless=headless,
                 network_idle=True,
                 timeout=60000,            # 60s nav timeout (default 30s is tight for FB)
                 page_action=page_action,
+                **extra,
             )
+            if _looks_blocked(page) and attempt <= retries:
+                wait = 20 * attempt       # back off: 20s, 40s, ...
+                print(f"  ! blocked/empty response (attempt {attempt}, "
+                      f"status={getattr(page,'status','?')}) — waiting {wait}s")
+                time.sleep(wait)
+                continue
+            return page
         except Exception as e:  # noqa: BLE001 — retry transient timeouts
             last_err = e
             if attempt <= retries:
-                print(f"  ! fetch failed (attempt {attempt}): {str(e)[:80]} — retrying")
-    raise last_err
+                wait = 10 * attempt
+                print(f"  ! fetch failed (attempt {attempt}): {str(e)[:70]} — "
+                      f"waiting {wait}s")
+                time.sleep(wait)
+    if last_err:
+        raise last_err
+    return page  # last (possibly blocked) page if all retries exhausted

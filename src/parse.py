@@ -14,8 +14,25 @@ A "post" dict looks like:
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
+
+# Invisible bidirectional / zero-width formatting characters Facebook injects
+# (e.g. U+061C Arabic Letter Mark around ٪). They clutter the .md and get
+# flagged by editors, but carry no content — strip them. We KEEP the real
+# Arabic percent sign ٪ (U+066A) and digits.
+_INVISIBLES = dict.fromkeys(
+    [0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x061C, 0xFEFF,
+     0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+     0x2066, 0x2067, 0x2068, 0x2069],
+    None,
+)
+
+
+def _clean(text: str) -> str:
+    """Remove invisible bidi/zero-width control chars and tidy whitespace."""
+    return text.translate(_INVISIBLES)
 
 
 def find_posts(page: Any) -> list:
@@ -70,7 +87,7 @@ def _extract_text(article: Any) -> str:
             if t and t.lower() not in _UI_NOISE and t not in seen:
                 seen.add(t)
                 out.append(t)
-    return "\n".join(out)
+    return _clean("\n".join(out))
 
 
 _KEEP_PARAMS = ("fbid", "story_fbid", "id", "v")  # identifiers worth keeping
@@ -157,6 +174,64 @@ def parse_post(article: Any) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Recover post IDs from the feed's GraphQL XHR (so text-only posts — which have
+# no /photo/?fbid= link to leak an ID — still get a real permalink + comments).
+# ---------------------------------------------------------------------------
+
+def _norm_key(text: str) -> str:
+    """Normalize a post's text to a stable matching key (collapse whitespace,
+    drop the See-more ellipsis, cap length)."""
+    return " ".join(text.split()).replace("…", "").strip()[:40]
+
+
+def build_post_id_index(page: Any) -> dict:
+    """Map normalized post-text prefixes -> numeric post_id from captured GraphQL.
+
+    Requires the feed to have been fetched with capture_xhr="graphql". Pairs each
+    GraphQL message text with the nearest preceding post_id.
+    """
+    xhr = getattr(page, "captured_xhr", None) or []
+    parts = []
+    for r in xhr:
+        b = getattr(r, "body", "")
+        parts.append(b.decode("utf-8", "replace") if isinstance(b, bytes) else (b or ""))
+    blob = "".join(parts)
+    if not blob:
+        return {}
+
+    id_positions = [(m.start(), m.group(1))
+                    for m in re.finditer(r'"post_id":"(\d{6,})"', blob)]
+    index: dict = {}
+    for m in re.finditer(r'"message":\{"text":"((?:[^"\\]|\\.)*)"', blob):
+        try:
+            text = json.loads('"' + m.group(1) + '"')
+        except Exception:  # noqa: BLE001
+            continue
+        before = [pid for pos, pid in id_positions if pos <= m.start()]
+        if not before:
+            continue
+        key = _norm_key(text)
+        if len(key) >= 10:
+            index.setdefault(key, before[-1])
+    return index
+
+
+def match_post_id(index: dict, text: str) -> str | None:
+    """Find a post's numeric ID in the GraphQL index by its text."""
+    key = _norm_key(text)
+    if not key:
+        return None
+    if key in index:
+        return index[key]
+    prefix = key[:20]
+    if len(prefix) >= 12:
+        for k, pid in index.items():
+            if k.startswith(prefix) or prefix.startswith(k[:20]):
+                return pid
+    return None
+
+
+# ---------------------------------------------------------------------------
 # V2: comments as dialog
 # ---------------------------------------------------------------------------
 
@@ -203,7 +278,7 @@ def _comment_own_text(article: Any) -> str:
                     and not _COMMENT_TIME.match(t) and t not in seen):
                 seen.add(t)
                 out.append(t)
-    return " ".join(out)
+    return _clean(" ".join(out))
 
 
 def _thread_order(turns: list[dict]) -> list[dict]:
